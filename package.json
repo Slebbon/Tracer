@@ -8,6 +8,10 @@
     "name": "Marco Confessore"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Slebbon/Tracer.git"
+  },
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
