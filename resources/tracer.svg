@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path fill="currentColor" d="M17.7 3.2a2.2 2.2 0 0 1 3.1 3.1L9 18.1l-5.1 1.4 1.4-5.1L17.7 3.2Z"/>
+  <path fill="currentColor" d="m5.9 14.9 3.2 3.2-1.1 1.1-3.2-3.2 1.1-1.1Z"/>
+  <path fill="var(--vscode-editor-background)" d="m5.3 17.1-.5 1.8 1.8-.5-1.3-1.3Z"/>
+</svg>

@@ -1,0 +1,129 @@
+{
+  "name": "tracer",
+  "displayName": "Tracer",
+  "publisher": "tracer-local",
+  "description": "Local-first developer activity recorder",
+  "version": "0.0.1",
+  "author": {
+    "name": "Marco Confessore"
+  },
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "tracer.recordTestEvent",
+        "title": "Tracer: Record Test Event"
+      },
+      {
+        "command": "tracer.showStatus",
+        "title": "Tracer: Show Status"
+      },
+      {
+        "command": "tracer.setObjective",
+        "title": "Tracer: Set Current Objective"
+      },
+      {
+        "command": "tracer.pause",
+        "title": "Tracer: Pause Recording"
+      },
+      {
+        "command": "tracer.resume",
+        "title": "Tracer: Resume Recording"
+      },
+      {
+        "command": "tracer.stop",
+        "title": "Tracer: Stop Recording"
+      },
+      {
+        "command": "tracer.showTimeline",
+        "title": "Tracer: Show Timeline"
+      },
+      {
+        "command": "tracer.showRecentSessions",
+        "title": "Tracer: Show Recent Sessions"
+      },
+      {
+        "command": "tracer.exportTimeline",
+        "title": "Tracer: Export Timeline"
+      },
+      {
+        "command": "tracer.exportSession",
+        "title": "Tracer: Export Session Projection"
+      },
+      {
+        "command": "tracer.copyAiContext",
+        "title": "Tracer: Copy AI Context"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tracer-sidebar",
+          "title": "Tracer",
+          "icon": "resources/tracer.svg"
+        }
+      ]
+    },
+    "views": {
+      "tracer-sidebar": [
+        {
+          "type": "webview",
+          "id": "tracer.dashboard",
+          "name": "Tracer"
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "title": "Tracer",
+    "properties": {
+      "tracer.ignorePatterns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "**/.env",
+          "**/.env.*",
+          "**/secrets/**",
+          "**/*.pem",
+          "**/*.key",
+          "**/node_modules/**",
+          "**/.git/**"
+        ],
+        "description": "Workspace-relative paths whose file contents Tracer must not record."
+      },
+      "tracer.captureTerminalCommands": {
+        "type": "boolean",
+        "default": false,
+        "description": "Record terminal command text. Disabled by default because commands may contain secrets."
+      },
+      "tracer.captureDiagnosticMessages": {
+        "type": "boolean",
+        "default": false,
+        "description": "Record diagnostic message text. Disabled by default because messages may include source details."
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./tsconfig.json",
+    "vscode:prepublish": "npm run compile",
+    "check": "tsc -p ./tsconfig.json --noEmit",
+    "test:core": "node --test --experimental-strip-types core.test.ts",
+    "package:extension": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}

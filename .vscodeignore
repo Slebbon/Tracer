@@ -1,0 +1,14 @@
+.git/**
+.gitignore
+.vscode-test-user-data*/**
+.github/**
+node_modules/**
+src/**
+**/*.ts
+**/*.map
+tsconfig.json
+core.test.ts
+MVP-IMPLEMENTATION-PLAN.md
+MVP-VALIDATION-CHECKLIST.md
+MVP-STATUS.md
+npm-debug.log*
