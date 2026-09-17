@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { createEvent } from "./core/events";
 import { SessionStore } from "./core/session-store";
 import { DEFAULT_IGNORES, isIgnoredPath } from "./core/privacy";
@@ -15,13 +15,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let ended = false;
   let eventCount = 0;
   let currentObjective = "Not set";
+  let storageStats: StorageStats = { sessions: 0, bytes: 0 };
   const store = new SessionStore(join(context.globalStorageUri.fsPath, "sessions", `${sessionId}.jsonl`));
   const sessionsDirectory = join(context.globalStorageUri.fsPath, "sessions");
   const sidebar = new TracerSidebarProvider(() => ({
     state: ended ? "stopped" : recording ? "recording" : "paused",
     eventCount,
     objective: currentObjective,
-    sessionId
+    sessionId,
+    retentionEnabled: vscode.workspace.getConfiguration("tracer").get<boolean>("retention.enabled", true),
+    retentionDays: vscode.workspace.getConfiguration("tracer").get<number>("retention.days", 30),
+    storageStats
   }));
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("tracer.dashboard", sidebar));
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -32,6 +36,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     status.tooltip = `Tracer session — ${eventCount} events\nObjective: ${currentObjective}`;
     status.show();
     sidebar.refresh();
+    if (eventCount % 25 === 0) void refreshStorageStats();
   };
   const append = async (
     type: Parameters<typeof createEvent>[2],
@@ -60,6 +65,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (vscode.window.activeTextEditor) {
     await append("active_file_changed", {}, fileDetails(vscode.window.activeTextEditor.document));
   }
+  await pruneExpiredSessions(sessionsDirectory, sessionId, retentionSettings());
+  await refreshStorageStats();
 
   context.subscriptions.push(
     vscode.commands.registerCommand("tracer.recordTestEvent", async () => {
@@ -171,6 +178,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.env.clipboard.writeText(renderAiContext(events));
       void vscode.window.showInformationMessage("Tracer AI context copied to the clipboard.");
     }),
+    vscode.commands.registerCommand("tracer.manageStorage", async () => {
+      await refreshStorageStats();
+      const settings = retentionSettings();
+      const choice = await vscode.window.showQuickPick([
+        { label: "$(folder-opened) Open Tracer storage folder", action: "open" },
+        { label: "$(trash) Clean expired sessions now", action: "clean" },
+        { label: "$(settings-gear) Open retention settings", action: "settings" }
+      ], { placeHolder: `${storageStats.sessions} sessions • ${formatBytes(storageStats.bytes)} • ${settings.enabled ? `${settings.days}-day retention` : "retention disabled"}` });
+      if (!choice) return;
+      if (choice.action === "open") {
+        await vscode.env.openExternal(vscode.Uri.file(sessionsDirectory));
+      } else if (choice.action === "clean") {
+        const deleted = await pruneExpiredSessions(sessionsDirectory, sessionId, settings);
+        await refreshStorageStats();
+        void vscode.window.showInformationMessage(deleted ? `Tracer removed ${deleted} expired session${deleted === 1 ? "" : "s"}.` : "Tracer found no expired sessions to remove.");
+      } else {
+        await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:tracer-local.tracer retention");
+      }
+    }),
+    vscode.commands.registerCommand("tracer.cleanExpiredSessions", async () => {
+      const deleted = await pruneExpiredSessions(sessionsDirectory, sessionId, retentionSettings());
+      await refreshStorageStats();
+      void vscode.window.showInformationMessage(deleted ? `Tracer removed ${deleted} expired session${deleted === 1 ? "" : "s"}.` : "Tracer found no expired sessions to remove.");
+    }),
     vscode.workspace.onDidOpenTextDocument((document) => {
       void append("file_opened", {}, fileDetails(document));
     }),
@@ -237,6 +268,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void append("session_ended");
     }
   } });
+
+  function retentionSettings(): RetentionSettings {
+    const configuration = vscode.workspace.getConfiguration("tracer");
+    return {
+      enabled: configuration.get<boolean>("retention.enabled", true),
+      days: Math.max(1, configuration.get<number>("retention.days", 30))
+    };
+  }
+
+  async function refreshStorageStats(): Promise<void> {
+    storageStats = await getStorageStats(sessionsDirectory);
+    sidebar.refresh();
+  }
 }
 
 export function deactivate(): void {}
@@ -246,6 +290,9 @@ type SidebarState = {
   eventCount: number;
   objective: string;
   sessionId: string;
+  retentionEnabled: boolean;
+  retentionDays: number;
+  storageStats: StorageStats;
 };
 
 class TracerSidebarProvider implements vscode.WebviewViewProvider {
@@ -287,10 +334,73 @@ class TracerSidebarProvider implements vscode.WebviewViewProvider {
       <section class="section"><h2>Current objective</h2><div class="objective">${escape(state.objective)}</div>${button("tracer.setObjective", "Set objective", true)}</section>
       <section class="section"><h2>Recording</h2>${state.state === "recording" ? button("tracer.pause", "Pause recording", true) : state.state === "paused" ? button("tracer.resume", "Resume recording", true) : ""}${state.state !== "stopped" ? button("tracer.stop", "Stop recording") : ""}${button("tracer.showStatus", "Show status")}</section>
       <section class="section"><h2>Inspect</h2>${button("tracer.showTimeline", "Open timeline", true)}${button("tracer.showRecentSessions", "Recent sessions")}</section>
+      <section class="section"><h2>Storage</h2><div class="meta">${state.storageStats.sessions} session${state.storageStats.sessions === 1 ? "" : "s"} · ${formatBytes(state.storageStats.bytes)}<br>Automatic cleanup: ${state.retentionEnabled ? `after ${state.retentionDays} days` : "disabled"}</div>${button("tracer.manageStorage", "Manage storage", true)}${button("tracer.cleanExpiredSessions", "Clean expired sessions")}</section>
       <section class="section"><h2>Export</h2>${button("tracer.exportSession", "Export projection")}${button("tracer.exportTimeline", "Export timeline")}${button("tracer.copyAiContext", "Copy AI context")}</section>
       <script>const vscode=acquireVsCodeApi();for(const button of document.querySelectorAll('button'))button.addEventListener('click',()=>vscode.postMessage({command:button.dataset.command}));</script>
     </body></html>`;
   }
+}
+
+type StorageStats = {
+  sessions: number;
+  bytes: number;
+};
+
+type RetentionSettings = {
+  enabled: boolean;
+  days: number;
+};
+
+async function getStorageStats(directory: string): Promise<StorageStats> {
+  try {
+    const files = (await readdir(directory)).filter((file) => file.endsWith(".jsonl"));
+    const sizes = await Promise.all(files.map(async (file) => {
+      try {
+        return (await stat(join(directory, file))).size;
+      } catch {
+        return 0;
+      }
+    }));
+    return { sessions: files.length, bytes: sizes.reduce((total, size) => total + size, 0) };
+  } catch {
+    return { sessions: 0, bytes: 0 };
+  }
+}
+
+async function pruneExpiredSessions(directory: string, currentSessionId: string, settings: RetentionSettings): Promise<number> {
+  if (!settings.enabled) return 0;
+  let files: string[];
+  try {
+    files = (await readdir(directory)).filter((file) => file.endsWith(".jsonl"));
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - settings.days * 24 * 60 * 60 * 1000;
+  let deleted = 0;
+  for (const file of files) {
+    const sessionId = file.slice(0, -".jsonl".length);
+    if (sessionId === currentSessionId) continue;
+    const path = join(directory, file);
+    try {
+      const events = await new SessionStore(path).readAll();
+      const lastEvent = events.at(-1);
+      if (!events.length || lastEvent?.type !== "session_ended") continue;
+      const startedAt = Date.parse(events[0].timestamp);
+      if (Number.isFinite(startedAt) && startedAt < cutoff) {
+        await unlink(path);
+        deleted += 1;
+      }
+    } catch {
+      // Preserve malformed or partially written sessions for inspection.
+    }
+  }
+  return deleted;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function timelineHtml(full: string, compact: string, summary: string, context: string): string {

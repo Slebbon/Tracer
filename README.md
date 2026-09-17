@@ -16,6 +16,7 @@ Tracer was created and is maintained by **Marco Confessore**. It is released und
 - Pause, resume, and stop recording controls
 - Status-bar indicator showing recording state and event count
 - Tracer Activity Bar icon with a scrollable sidebar dashboard
+- Configurable local session retention with automatic cleanup after 30 days by default
 
 Terminal command text is disabled by default. Enable `tracer.captureTerminalCommands` only when the workspace permits command capture.
 
@@ -55,3 +56,5 @@ The workspace also contains `MVP-STATUS.md`, an evidence-backed implementation a
 Raw data remains local. Default ignored patterns include `.env`, secrets directories, private keys/certificates, `node_modules`, and `.git`. Excluded file changes retain metadata but never persist their text payload.
 
 The canonical source is JSONL. Markdown outputs are projections and can be regenerated from the raw event layer.
+
+Completed sessions are retained for 30 days by default and then removed automatically. Retention can be disabled or changed with `tracer.retention.enabled` and `tracer.retention.days`. The active session is never removed, and incomplete or malformed sessions are preserved for inspection.

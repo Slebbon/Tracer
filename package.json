@@ -65,6 +65,14 @@
       {
         "command": "tracer.copyAiContext",
         "title": "Tracer: Copy AI Context"
+      },
+      {
+        "command": "tracer.manageStorage",
+        "title": "Tracer: Manage Storage"
+      },
+      {
+        "command": "tracer.cleanExpiredSessions",
+        "title": "Tracer: Clean Expired Sessions"
       }
     ],
     "viewsContainers": {
@@ -114,6 +122,17 @@
         "type": "boolean",
         "default": false,
         "description": "Record diagnostic message text. Disabled by default because messages may include source details."
+      },
+      "tracer.retention.enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically remove completed sessions older than the retention period. The active session is never removed."
+      },
+      "tracer.retention.days": {
+        "type": "number",
+        "default": 30,
+        "minimum": 1,
+        "description": "Number of days to retain completed Tracer sessions when automatic cleanup is enabled."
       }
     }
   },
