@@ -21,6 +21,8 @@ export type TraceEventType =
   | "git_branch_changed"
   | "git_commit";
 
+export type TraceEventSource = "vscode" | "godot";
+
 const TRACE_EVENT_TYPES: readonly TraceEventType[] = [
   "session_started", "session_ended", "session_paused", "session_resumed", "objective_set",
   "workspace_opened", "workspace_changed", "file_opened", "active_file_changed",
@@ -53,7 +55,7 @@ export function isTraceEvent(value: unknown): value is TraceEvent {
     && typeof event.sessionId === "string"
     && Number.isInteger(event.sequence) && (event.sequence as number) > 0
     && typeof event.timestamp === "string" && !Number.isNaN(Date.parse(event.timestamp))
-    && event.source === "vscode"
+    && (event.source === "vscode" || event.source === "godot")
     && typeof event.type === "string" && TRACE_EVENT_TYPES.includes(event.type as TraceEventType)
     && typeof event.payload === "object" && event.payload !== null;
 }
@@ -69,14 +71,15 @@ export function createEvent(
   sequence: number,
   type: TraceEventType,
   payload: Record<string, unknown> = {},
-  details: Pick<TraceEvent, "workspace" | "file"> = {}
+  details: Pick<TraceEvent, "workspace" | "file"> = {},
+  source: TraceEventSource = "vscode"
 ): TraceEvent {
   return {
     schemaVersion: 1,
     sessionId,
     sequence,
     timestamp: new Date().toISOString(),
-    source: "vscode",
+    source,
     type,
     payload,
     ...details

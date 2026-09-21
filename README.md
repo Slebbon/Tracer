@@ -1,6 +1,6 @@
 # Tracer
 
-Tracer is a local-first VS Code developer-activity recorder. It records a structured chronological event stream and derives inspectable timeline and context projections from it.
+Tracer is a local-first VS Code developer-activity recorder. It records a structured chronological event stream and derives inspectable timeline and review projections from it.
 
 ## Author and license
 
@@ -9,11 +9,13 @@ Tracer was created and is maintained by **Marco Confessore**. It is released und
 ## Current MVP surface
 
 - Session, workspace, file, edit, save, diagnostic, terminal, and VS Code task events
+- Explicit start control: Tracer opens stopped and records only after you start a session
 - Append-only JSONL storage under the VS Code global storage directory
 - Full and deterministic compact timelines
-- Raw JSONL, compact JSONL, full/compact Markdown, summary, and AI-context exports
+- Raw JSONL, compact JSONL, full/compact Markdown, summary, and AI Review exports
 - Configurable sensitive-path exclusions
 - Pause, resume, and stop recording controls
+- Starting a new session after stopping, without overwriting the previous session
 - Status-bar indicator showing recording state and event count
 - Tracer Activity Bar icon with a scrollable sidebar dashboard
 - Configurable local session retention with automatic cleanup after 30 days by default
@@ -58,3 +60,5 @@ Raw data remains local. Default ignored patterns include `.env`, secrets directo
 The canonical source is JSONL. Markdown outputs are projections and can be regenerated from the raw event layer.
 
 Completed sessions are retained for 30 days by default and then removed automatically. Retention can be disabled or changed with `tracer.retention.enabled` and `tracer.retention.days`. The active session is never removed, and incomplete or malformed sessions are preserved for inspection.
+
+Session files use names such as `session-20260917-100913-a1b2c3d4.jsonl`, combining a UTC timestamp with a short session ID for easier identification.

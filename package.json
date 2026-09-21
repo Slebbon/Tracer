@@ -23,6 +23,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "tracer.start",
+        "title": "Tracer: Start Recording"
+      },
+      {
         "command": "tracer.recordTestEvent",
         "title": "Tracer: Record Test Event"
       },

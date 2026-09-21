@@ -40,29 +40,56 @@ export function renderAiContext(events: TraceEvent[]): string {
   const currentFile = [...ordered].reverse().find((event) => event.file?.path)?.file?.path;
   const objective = [...ordered].reverse().find((event) => event.type === "objective_set");
   const objectiveText = objective && typeof objective.payload.objective === "string" ? objective.payload.objective : undefined;
+  const first = ordered[0]?.timestamp;
+  const last = ordered[ordered.length - 1]?.timestamp;
+  const compactPath = compactEvents(ordered).slice(-20);
+  const changes = ordered.filter((event) => event.type === "file_changed").length;
+  const saves = ordered.filter((event) => event.type === "file_saved").length;
+  const diagnostics = ordered.filter((event) => event.type === "diagnostics_changed").length;
+  const tasks = ordered.filter((event) => event.type.startsWith("task_")).length;
+  const terminals = ordered.filter((event) => event.type.startsWith("terminal_")).length;
+  const git = ordered.filter((event) => event.type.startsWith("git_")).length;
+  const lastEvent = ordered.at(-1);
   return [
-    "# Tracer Development Context",
+    "# Tracer AI Review",
     "",
-    "This context was generated from a local chronological development trace.",
+    "A concise review brief generated from Tracer's local chronological development trace.",
     "",
-    "## Current objective",
+    "## Objective",
     "",
     objectiveText ?? "Not explicitly set",
     "",
-    "## Relevant files",
+    "## Session overview",
     "",
-    ...(files.length ? files.map((file) => `- \`${file}\``) : ["- None recorded"]),
+    `- Status: ${lastEvent?.type === "session_ended" ? "completed" : "in progress or interrupted"}`,
+    `- Raw events: ${ordered.length}`,
+    ...(first && last ? [`- Time range: ${first} → ${last}`] : []),
     "",
-    "## Current file",
+    "## Working set",
     "",
-    currentFile ? `\`${currentFile}\`` : "Unknown",
+    `- Current file: ${currentFile ? `\`${currentFile}\`` : "Unknown"}`,
+    ...(files.length ? files.map((file) => `- Relevant file: \`${file}\``) : ["- No files recorded"]),
     "",
-    "## Recent activity",
+    "## Activity signals",
     "",
-    renderCompactTimeline(ordered),
-    "## Raw event coverage",
+    `- File changes: ${changes}`,
+    `- Saves: ${saves}`,
+    `- Diagnostic updates: ${diagnostics}`,
+    `- Tasks: ${tasks}`,
+    `- Terminal events: ${terminals}`,
+    `- Git events: ${git}`,
     "",
-    `This context is derived from ${ordered.length} raw events. The raw JSONL export should be preferred when exact details are required.`
+    "## Recent development path",
+    "",
+    ...(compactPath.length
+      ? compactPath.map((event) => `- ${event.summary} _(raw events: ${event.sourceSequences.join(", ")})_`)
+      : ["- No activity path recorded"]),
+    "",
+    "## Evidence and limits",
+    "",
+    "- Activity summaries are deterministic projections of the raw event stream; they are not guesses about intent.",
+    "- Raw sequence references are preserved so each review item can be traced back to JSONL evidence.",
+    "- Use the raw JSONL export when exact edits, diagnostics, or command-level details are required."
   ].join("\n");
 }
 

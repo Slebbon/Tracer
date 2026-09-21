@@ -48,7 +48,7 @@ function isStoredEvent(value: unknown): value is TraceEvent {
     && typeof event.sessionId === "string"
     && Number.isInteger(event.sequence) && (event.sequence as number) > 0
     && typeof event.timestamp === "string" && !Number.isNaN(Date.parse(event.timestamp))
-    && event.source === "vscode"
+    && (event.source === "vscode" || event.source === "godot")
     && typeof event.type === "string" && [
       "session_started", "session_ended", "session_paused", "session_resumed", "objective_set",
       "workspace_opened", "workspace_changed", "file_opened", "active_file_changed",

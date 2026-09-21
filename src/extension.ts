@@ -9,14 +9,15 @@ import { renderCompactTimeline, renderFullTimeline } from "./core/timeline";
 import { compactJsonl, renderAiContext, renderRawJsonl, renderSessionSummary } from "./core/outputs";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const sessionId = randomUUID();
+  let sessionId = "";
   let sequence = 0;
-  let recording = true;
-  let ended = false;
+  let recording = false;
+  let ended = true;
+  let hasSession = false;
   let eventCount = 0;
   let currentObjective = "Not set";
   let storageStats: StorageStats = { sessions: 0, bytes: 0 };
-  const store = new SessionStore(join(context.globalStorageUri.fsPath, "sessions", `${sessionId}.jsonl`));
+  let store: SessionStore | undefined;
   const sessionsDirectory = join(context.globalStorageUri.fsPath, "sessions");
   const sidebar = new TracerSidebarProvider(() => ({
     state: ended ? "stopped" : recording ? "recording" : "paused",
@@ -33,7 +34,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(status);
   const updateStatus = (): void => {
     status.text = ended ? "$(circle-slash) Tracer: stopped" : recording ? "$(pulse) Tracer: recording" : "$(debug-pause) Tracer: paused";
-    status.tooltip = `Tracer session — ${eventCount} events\nObjective: ${currentObjective}`;
+    status.tooltip = `${hasSession ? `Tracer session — ${eventCount} events` : "Tracer is stopped — no active session"}\nObjective: ${currentObjective}`;
     status.show();
     sidebar.refresh();
     if (eventCount % 25 === 0) void refreshStorageStats();
@@ -44,7 +45,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     details: Parameters<typeof createEvent>[4] = {}
   ): Promise<void> => {
     const lifecycle = type === "session_started" || type === "session_ended" || type === "session_paused" || type === "session_resumed";
-    if (!recording && !lifecycle) return;
+    if (!hasSession || !store || (!recording && !lifecycle)) return;
     await store.append(createEvent(sessionId, ++sequence, type, payload, details));
     eventCount += 1;
     updateStatus();
@@ -54,30 +55,56 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   const ignored = () => vscode.workspace.getConfiguration("tracer").get<string[]>("ignorePatterns", DEFAULT_IGNORES);
 
-  await append("session_started", { workspace: vscode.workspace.name ?? null }, {
-    workspace: { name: vscode.workspace.name ?? undefined, path: vscode.workspace.workspaceFile?.fsPath }
-  });
-  if (vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length) {
-    await append("workspace_opened", {}, {
+  async function startSession(): Promise<void> {
+    sessionId = randomUUID();
+    sequence = 0;
+    eventCount = 0;
+    currentObjective = "Not set";
+    ended = false;
+    recording = true;
+    hasSession = true;
+    store = new SessionStore(join(sessionsDirectory, sessionFileName(sessionId)));
+    await append("session_started", { workspace: vscode.workspace.name ?? null }, {
       workspace: { name: vscode.workspace.name ?? undefined, path: vscode.workspace.workspaceFile?.fsPath }
     });
+    if (vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length) {
+      await append("workspace_opened", {}, {
+        workspace: { name: vscode.workspace.name ?? undefined, path: vscode.workspace.workspaceFile?.fsPath }
+      });
+    }
+    if (vscode.window.activeTextEditor) {
+      await append("active_file_changed", {}, fileDetails(vscode.window.activeTextEditor.document));
+    }
+    await refreshStorageStats();
   }
-  if (vscode.window.activeTextEditor) {
-    await append("active_file_changed", {}, fileDetails(vscode.window.activeTextEditor.document));
-  }
-  await pruneExpiredSessions(sessionsDirectory, sessionId, retentionSettings());
+
+  await pruneExpiredSessions(sessionsDirectory, "", retentionSettings());
   await refreshStorageStats();
+  updateStatus();
 
   context.subscriptions.push(
     vscode.commands.registerCommand("tracer.recordTestEvent", async () => {
+      if (!hasSession) {
+        void vscode.window.showInformationMessage("Tracer is stopped. Start a session before recording events.");
+        return;
+      }
       await append("file_changed", { source: "manual_test_command" });
       void vscode.window.showInformationMessage(`Tracer recorded event ${sequence}.`);
     }),
+    vscode.commands.registerCommand("tracer.start", async () => {
+      if (recording) return;
+      await startSession();
+      void vscode.window.showInformationMessage("Tracer recording started.");
+    }),
     vscode.commands.registerCommand("tracer.showStatus", async () => {
-      const events = await store.readAll();
-      void vscode.window.showInformationMessage(`Tracer session ${sessionId.slice(0, 8)}: ${events.length} events (${ended ? "stopped" : recording ? "recording" : "paused"}).`);
+      const events = await readCurrentEvents();
+      void vscode.window.showInformationMessage(`${hasSession ? `Tracer session ${sessionId.slice(0, 8)}` : "Tracer has no active session"}: ${events.length} events (${ended ? "stopped" : recording ? "recording" : "paused"}).`);
     }),
     vscode.commands.registerCommand("tracer.setObjective", async () => {
+      if (!hasSession) {
+        void vscode.window.showInformationMessage("Start a Tracer session before setting an objective.");
+        return;
+      }
       const objective = await vscode.window.showInputBox({
         prompt: "What are you trying to accomplish in this session?",
         placeHolder: "e.g. Fix token refresh handling and make the tests pass",
@@ -95,7 +122,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage("Tracer recording paused.");
     }),
     vscode.commands.registerCommand("tracer.resume", async () => {
-      if (ended || recording) return;
+      if (recording) return;
+      if (ended || !hasSession) {
+        await startSession();
+        void vscode.window.showInformationMessage("Tracer started a new recording session.");
+        return;
+      }
       recording = true;
       await append("session_resumed");
       void vscode.window.showInformationMessage("Tracer recording resumed.");
@@ -108,7 +140,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage("Tracer recording stopped for this session.");
     }),
     vscode.commands.registerCommand("tracer.showTimeline", async () => {
-      const events = await store.readAll();
+      const events = await readCurrentEvents();
       const panel = vscode.window.createWebviewPanel("tracerTimeline", "Tracer Timeline", vscode.ViewColumn.Beside, {});
       panel.webview.html = timelineHtml(
         renderFullTimeline(events),
@@ -138,7 +170,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
     }),
     vscode.commands.registerCommand("tracer.exportTimeline", async () => {
-      const events = await store.readAll();
+      const events = await readCurrentEvents();
       const target = await vscode.window.showSaveDialog({
         saveLabel: "Export Tracer Timeline",
         filters: { Markdown: ["md"] },
@@ -149,14 +181,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage(`Tracer timeline exported to ${target.fsPath}.`);
     }),
     vscode.commands.registerCommand("tracer.exportSession", async () => {
-      const events = await store.readAll();
+      const events = await readCurrentEvents();
       const choice = await vscode.window.showQuickPick([
         { label: "Raw JSONL", key: "raw", extension: "jsonl" },
         { label: "Compact JSONL", key: "compact", extension: "jsonl" },
         { label: "Full Timeline Markdown", key: "full", extension: "md" },
         { label: "Compact Timeline Markdown", key: "compactMd", extension: "md" },
         { label: "Session Summary Markdown", key: "summary", extension: "md" },
-        { label: "AI Context Markdown", key: "context", extension: "md" }
+        { label: "AI Review Markdown", key: "context", extension: "md" }
       ], { placeHolder: "Choose the Tracer projection to export" });
       if (!choice) return;
       const content = choice.key === "raw" ? renderRawJsonl(events)
@@ -174,9 +206,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage(`Tracer projection exported to ${target.fsPath}.`);
     }),
     vscode.commands.registerCommand("tracer.copyAiContext", async () => {
-      const events = await store.readAll();
+      const events = await readCurrentEvents();
       await vscode.env.clipboard.writeText(renderAiContext(events));
-      void vscode.window.showInformationMessage("Tracer AI context copied to the clipboard.");
+      void vscode.window.showInformationMessage("Tracer AI review copied to the clipboard.");
     }),
     vscode.commands.registerCommand("tracer.manageStorage", async () => {
       await refreshStorageStats();
@@ -262,7 +294,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await registerGitListeners(vscode, append, context);
 
   context.subscriptions.push({ dispose: () => {
-    if (!ended) {
+    if (hasSession && !ended) {
       ended = true;
       recording = false;
       void append("session_ended");
@@ -280,6 +312,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   async function refreshStorageStats(): Promise<void> {
     storageStats = await getStorageStats(sessionsDirectory);
     sidebar.refresh();
+  }
+
+  async function readCurrentEvents(): Promise<Awaited<ReturnType<SessionStore["readAll"]>>> {
+    return store ? store.readAll() : [];
   }
 }
 
@@ -330,12 +366,12 @@ class TracerSidebarProvider implements vscode.WebviewViewProvider {
       button:hover{background:var(--vscode-button-secondaryHoverBackground)}button.primary{color:var(--vscode-button-foreground);background:var(--vscode-button-background)}
       button.primary:hover{background:var(--vscode-button-hoverBackground)}
     </style></head><body>
-      <section class="section"><h2>Session</h2><div class="state ${state.state}"><span class="dot"></span><span>${state.state}</span></div><div class="meta">${state.eventCount} events<br>Session ${escape(state.sessionId.slice(0, 8))}</div></section>
+      <section class="section"><h2>Session</h2><div class="state ${state.state}"><span class="dot"></span><span>${state.state}</span></div><div class="meta">${state.eventCount} events<br>${state.sessionId ? `Session ${escape(state.sessionId.slice(0, 8))}` : "No session started"}</div></section>
       <section class="section"><h2>Current objective</h2><div class="objective">${escape(state.objective)}</div>${button("tracer.setObjective", "Set objective", true)}</section>
-      <section class="section"><h2>Recording</h2>${state.state === "recording" ? button("tracer.pause", "Pause recording", true) : state.state === "paused" ? button("tracer.resume", "Resume recording", true) : ""}${state.state !== "stopped" ? button("tracer.stop", "Stop recording") : ""}${button("tracer.showStatus", "Show status")}</section>
+      <section class="section"><h2>Recording</h2>${state.state === "recording" ? button("tracer.pause", "Pause recording", true) : state.state === "paused" ? button("tracer.resume", "Resume recording", true) : button("tracer.start", "Start recording", true)}${state.state !== "stopped" ? button("tracer.stop", "Stop recording") : ""}${button("tracer.showStatus", "Show status")}</section>
       <section class="section"><h2>Inspect</h2>${button("tracer.showTimeline", "Open timeline", true)}${button("tracer.showRecentSessions", "Recent sessions")}</section>
       <section class="section"><h2>Storage</h2><div class="meta">${state.storageStats.sessions} session${state.storageStats.sessions === 1 ? "" : "s"} · ${formatBytes(state.storageStats.bytes)}<br>Automatic cleanup: ${state.retentionEnabled ? `after ${state.retentionDays} days` : "disabled"}</div>${button("tracer.manageStorage", "Manage storage", true)}${button("tracer.cleanExpiredSessions", "Clean expired sessions")}</section>
-      <section class="section"><h2>Export</h2>${button("tracer.exportSession", "Export projection")}${button("tracer.exportTimeline", "Export timeline")}${button("tracer.copyAiContext", "Copy AI context")}</section>
+      <section class="section"><h2>Export</h2>${button("tracer.exportSession", "Export projection")}${button("tracer.exportTimeline", "Export timeline")}${button("tracer.copyAiContext", "Copy AI review")}</section>
       <script>const vscode=acquireVsCodeApi();for(const button of document.querySelectorAll('button'))button.addEventListener('click',()=>vscode.postMessage({command:button.dataset.command}));</script>
     </body></html>`;
   }
@@ -378,11 +414,10 @@ async function pruneExpiredSessions(directory: string, currentSessionId: string,
   const cutoff = Date.now() - settings.days * 24 * 60 * 60 * 1000;
   let deleted = 0;
   for (const file of files) {
-    const sessionId = file.slice(0, -".jsonl".length);
-    if (sessionId === currentSessionId) continue;
     const path = join(directory, file);
     try {
       const events = await new SessionStore(path).readAll();
+      if (events[0]?.sessionId === currentSessionId) continue;
       const lastEvent = events.at(-1);
       if (!events.length || lastEvent?.type !== "session_ended") continue;
       const startedAt = Date.parse(events[0].timestamp);
@@ -403,6 +438,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function sessionFileName(sessionId: string): string {
+  const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  return `session-${timestamp}-${sessionId.slice(0, 8)}.jsonl`;
+}
+
 function timelineHtml(full: string, compact: string, summary: string, context: string): string {
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   const panel = (id: string, title: string, content: string, active = false) => `<section id="${id}" class="view${active ? " active" : ""}"><h2>${title}</h2><pre>${escape(content)}</pre></section>`;
@@ -412,8 +452,8 @@ function timelineHtml(full: string, compact: string, summary: string, context: s
     button:hover{background:var(--vscode-button-hoverBackground)} .view{display:none}.view.active{display:block}
     pre{white-space:pre-wrap;line-height:1.45;border:1px solid var(--vscode-panel-border);padding:12px;overflow:auto}
   </style></head><body><h1>Tracer Timeline</h1>
-    <nav><button data-view="full">Full</button><button data-view="compact">Compact</button><button data-view="summary">Summary</button><button data-view="context">AI Context</button></nav>
-    ${panel("full", "Full Timeline", full, true)}${panel("compact", "Compact Timeline", compact)}${panel("summary", "Session Summary", summary)}${panel("context", "AI Context", context)}
+    <nav><button data-view="full">Full</button><button data-view="compact">Compact</button><button data-view="summary">Summary</button><button data-view="context">AI Review</button></nav>
+    ${panel("full", "Full Timeline", full, true)}${panel("compact", "Compact Timeline", compact)}${panel("summary", "Session Summary", summary)}${panel("context", "AI Review", context)}
     <script>for(const button of document.querySelectorAll('button')){button.addEventListener('click',()=>{for(const view of document.querySelectorAll('.view'))view.classList.remove('active');document.getElementById(button.dataset.view)?.classList.add('active');});}</script>
   </body></html>`;
 }
