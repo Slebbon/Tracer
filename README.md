@@ -44,6 +44,34 @@ The workspace also contains `MVP-STATUS.md`, an evidence-backed implementation a
 
 The `godot/` directory contains the Godot 4 addon source, and `tracer-godot-0.1.0.zip` is the generated importable package. Copy the ZIP contents into a Godot project so the project contains `addons/tracer/`, then enable Tracer under Project Settings > Plugins.
 
+## Godot 4 integration
+
+Tracer can run inside the Godot editor as an importable editor plugin. Build the package with:
+
+```powershell
+npm run package:godot
+```
+
+Extract `tracer-godot-0.1.0.zip` into the root of a Godot project, at the same level as `project.godot`:
+
+```text
+your-game/
+├── project.godot
+└── addons/
+    └── tracer/
+```
+
+Enable it from `Project > Project Settings > Plugins`. The Tracer dock appears in the right editor dock area. The first Godot MVP starts stopped and provides:
+
+- Start, Pause, Resume, and Stop controls;
+- a new session after stopping, without overwriting the previous one;
+- script, scene, resource, filesystem, selection, editor-screen, and playtest events;
+- saved script diffs and saved-file metadata;
+- a readable AI Review panel;
+- a button to open the local session folder.
+
+Godot sessions are stored locally under `user://tracer/sessions/`. Script diffs are captured when files are saved; unsaved character-by-character edits are not yet collected.
+
 ## Useful commands
 
 - `Tracer: Show Status`
