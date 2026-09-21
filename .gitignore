@@ -8,5 +8,6 @@ npm-debug.log*
 Thumbs.db
 
 # Local planning and validation notes; keep the repository focused on product code.
+MVP-implementation/
 MVP-*.md
 *-IMPLEMENTATION-PLAN.md
