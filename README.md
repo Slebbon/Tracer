@@ -18,6 +18,7 @@ Tracer was created and is maintained by **Marco Confessore**. It is released und
 - Starting a new session after stopping, without overwriting the previous session
 - Status-bar indicator showing recording state and event count
 - Tracer Activity Bar icon with a scrollable sidebar dashboard
+- Importable Godot 4 editor plugin with the same event envelope and AI Review flow
 - Configurable local session retention with automatic cleanup after 30 days by default
 
 Terminal command text is disabled by default. Enable `tracer.captureTerminalCommands` only when the workspace permits command capture.
@@ -40,6 +41,8 @@ The extension entry point is `src/extension.ts`. In VS Code, compile the extensi
 The workspace contains `MVP-VALIDATION-CHECKLIST.md` for the first three real-session validation runs.
 
 The workspace also contains `MVP-STATUS.md`, an evidence-backed implementation audit.
+
+The `godot/` directory contains the Godot 4 addon source, and `tracer-godot-0.1.0.zip` is the generated importable package. Copy the ZIP contents into a Godot project so the project contains `addons/tracer/`, then enable Tracer under Project Settings > Plugins.
 
 ## Useful commands
 

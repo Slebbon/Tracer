@@ -145,7 +145,8 @@
     "vscode:prepublish": "npm run compile",
     "check": "tsc -p ./tsconfig.json --noEmit",
     "test:core": "node --test --experimental-strip-types core.test.ts",
-    "package:extension": "vsce package --no-dependencies"
+    "package:extension": "vsce package --no-dependencies",
+    "package:godot": "tar.exe -a -c -f tracer-godot-0.1.0.zip -C godot addons"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -41,7 +41,7 @@ export type TraceEvent = {
   sessionId: string;
   sequence: number;
   timestamp: string;
-  source: "vscode";
+  source: TraceEventSource;
   type: TraceEventType;
   workspace?: { name?: string; path?: string };
   file?: { path: string; languageId?: string };
