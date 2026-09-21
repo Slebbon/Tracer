@@ -6,6 +6,7 @@ const SOURCE := "godot"
 
 var session_id := ""
 var session_path := ""
+var snapshot_directory := ""
 var sequence := 0
 var active := false
 var recording := false
@@ -15,9 +16,12 @@ func start_session(project_name: String) -> String:
 	if root == null:
 		return ""
 	root.make_dir_recursive("tracer/sessions")
+	root.make_dir_recursive("tracer/snapshots")
 	session_id = "%s-%s" % [Time.get_ticks_usec(), randi()]
 	var stamp := Time.get_datetime_string_from_system(true, true).replace("-", "").replace(":", "").replace("T", "-").substr(0, 15)
 	session_path = "user://tracer/sessions/session-%s-%s.jsonl" % [stamp, session_id.substr(0, 8)]
+	snapshot_directory = "user://tracer/snapshots/%s" % session_id
+	root.make_dir_recursive("tracer/snapshots/%s" % session_id)
 	sequence = 0
 	active = true
 	recording = true
@@ -53,6 +57,21 @@ func append(event_type: String, payload: Dictionary = {}, file_path := "", langu
 	file.flush()
 	file.close()
 	return JSON.stringify(event)
+
+func save_snapshot(file_path: String, content: String) -> String:
+	if snapshot_directory == "":
+		return ""
+	var safe_name := file_path.replace("res://", "").replace("/", "_").replace("\\", "_").replace(":", "_")
+	if safe_name == "":
+		safe_name = "source.txt"
+	var snapshot_path := "%s/%06d-%s" % [snapshot_directory, sequence + 1, safe_name]
+	var file := FileAccess.open(snapshot_path, FileAccess.WRITE)
+	if file == null:
+		return ""
+	file.store_string(content)
+	file.flush()
+	file.close()
+	return snapshot_path
 
 func pause_session() -> void:
 	if active and recording:

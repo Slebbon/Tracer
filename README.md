@@ -18,6 +18,7 @@ Tracer was created and is maintained by **Marco Confessore**. It is released und
 - Starting a new session after stopping, without overwriting the previous session
 - Status-bar indicator showing recording state and event count
 - Tracer Activity Bar icon with a scrollable sidebar dashboard
+- Local code snapshots enabled by default, with a sidebar toggle and sensitive-path exclusions
 - Importable Godot 4 editor plugin with the same event envelope and AI Review flow
 - Configurable local session retention with automatic cleanup after 30 days by default
 
@@ -68,9 +69,10 @@ Enable it from `Project > Project Settings > Plugins`. The Tracer dock appears i
 - script, scene, resource, filesystem, selection, editor-screen, and playtest events;
 - saved script diffs and saved-file metadata;
 - a readable AI Review panel;
-- a button to open the local session folder.
+- local code snapshots enabled by default, with a `Code snapshots: On/Off` toggle in the dock;
+- a button to open the local Tracer storage folder, including sessions and snapshots.
 
-Godot sessions are stored locally under `user://tracer/sessions/`. Script diffs are captured when files are saved; unsaved character-by-character edits are not yet collected.
+Godot sessions are stored locally under `user://tracer/sessions/`. When snapshots are enabled, source snapshots are stored separately under `user://tracer/snapshots/<session-id>/` and referenced by `code_snapshot` events in the JSONL. Saved script diffs are still captured as bounded diffs; snapshots do not record every keystroke and can be disabled from the dock.
 
 ## Useful commands
 
@@ -87,6 +89,8 @@ Godot sessions are stored locally under `user://tracer/sessions/`. Script diffs 
 ## Privacy model
 
 Raw data remains local. Default ignored patterns include `.env`, secrets directories, private keys/certificates, `node_modules`, and `.git`. Excluded file changes retain metadata but never persist their text payload.
+
+Code snapshots are enabled by default in both collectors so the first MVP can produce a more useful AI Review. They can be disabled at any time from the VS Code sidebar or Godot Tracer dock. Snapshot files remain local and are included in the same retention lifecycle as their session.
 
 The canonical source is JSONL. Markdown outputs are projections and can be regenerated from the raw event layer.
 

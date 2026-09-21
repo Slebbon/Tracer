@@ -127,6 +127,17 @@
         "default": false,
         "description": "Record diagnostic message text. Disabled by default because messages may include source details."
       },
+      "tracer.captureCodeSnapshots": {
+        "type": "boolean",
+        "default": true,
+        "description": "Save local snapshots of edited text files for richer AI reviews. Toggle from the Tracer sidebar."
+      },
+      "tracer.snapshotIntervalSeconds": {
+        "type": "number",
+        "default": 30,
+        "minimum": 5,
+        "description": "Minimum interval between snapshots of the active text file while recording."
+      },
       "tracer.retention.enabled": {
         "type": "boolean",
         "default": true,

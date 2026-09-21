@@ -10,6 +10,7 @@ export type TraceEventType =
   | "active_file_changed"
   | "file_changed"
   | "file_saved"
+  | "code_snapshot"
   | "diagnostics_changed"
   | "terminal_opened"
   | "terminal_closed"
@@ -26,7 +27,7 @@ export type TraceEventSource = "vscode" | "godot";
 const TRACE_EVENT_TYPES: readonly TraceEventType[] = [
   "session_started", "session_ended", "session_paused", "session_resumed", "objective_set",
   "workspace_opened", "workspace_changed", "file_opened", "active_file_changed",
-  "file_changed", "file_saved", "diagnostics_changed", "terminal_opened",
+  "file_changed", "file_saved", "code_snapshot", "diagnostics_changed", "terminal_opened",
   "terminal_closed", "terminal_command_started", "terminal_command_finished",
   "task_started", "task_finished", "task_process_finished", "git_branch_changed", "git_commit"
 ];

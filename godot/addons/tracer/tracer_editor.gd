@@ -14,6 +14,9 @@ var current_file := ""
 var current_scene_path := ""
 var playing := false
 var snapshots: Dictionary = {}
+var snapshot_hashes: Dictionary = {}
+var snapshot_elapsed := 0.0
+const SNAPSHOT_INTERVAL_SECONDS := 30.0
 
 func _enter_tree() -> void:
 	dock = TracerDock.new()
@@ -50,8 +53,9 @@ func _on_dock_action(action: String) -> void:
 		"pause": _pause_session()
 		"resume": _resume_session()
 		"stop": _stop_session()
+		"toggle_snapshots": _toggle_snapshots()
 		"review": _show_review()
-		"open_storage": OS.shell_open(ProjectSettings.globalize_path("user://tracer/sessions"))
+		"open_storage": OS.shell_open(ProjectSettings.globalize_path("user://tracer"))
 
 func _start_session() -> void:
 	if recording:
@@ -66,6 +70,9 @@ func _start_session() -> void:
 	current_script_path = ""
 	current_scene_path = ""
 	snapshots.clear()
+	snapshot_hashes.clear()
+	snapshot_elapsed = 0.0
+	_ensure_snapshot_setting()
 	_record("workspace_opened", {"project": project_name})
 	_capture_current_editor()
 	_update_dock()
@@ -112,9 +119,13 @@ func _capture_current_editor() -> void:
 func _poll_editor_state() -> void:
 	if not recording:
 		return
+	snapshot_elapsed += poll_timer.wait_time
 	var script := EditorInterface.get_script_editor().get_current_script()
 	if script != null and script.resource_path != "":
 		_track_script(script.resource_path)
+	if snapshot_elapsed >= SNAPSHOT_INTERVAL_SECONDS:
+		snapshot_elapsed = 0.0
+		_capture_current_script_snapshot("interval")
 	var now_playing := EditorInterface.is_playing_scene()
 	if now_playing != playing:
 		playing = now_playing
@@ -128,6 +139,7 @@ func _track_script(path: String) -> void:
 	if FileAccess.file_exists(path):
 		snapshots[path] = FileAccess.get_file_as_string(path)
 	_record("script_opened", {}, path, "gd")
+	_capture_current_script_snapshot("script_opened")
 
 func _on_resource_saved(resource: Resource) -> void:
 	if not recording or resource == null or resource.resource_path == "":
@@ -155,6 +167,43 @@ func _capture_saved_file(path: String, kind: String, language_id: String) -> voi
 		_record("file_changed", _diff_payload(before, after, kind), path, language_id)
 	_record("file_saved", {"kind": kind, "changed": had_snapshot and before != after}, path, language_id)
 	snapshots[path] = after
+	if kind == "script":
+		_capture_code_snapshot(path, after, "save", language_id)
+
+func _capture_current_script_snapshot(reason: String) -> void:
+	if not _snapshots_enabled():
+		return
+	var script := EditorInterface.get_script_editor().get_current_script()
+	if script == null or script.resource_path == "":
+		return
+	_capture_code_snapshot(script.resource_path, script.source_code, reason, "gd")
+
+func _capture_code_snapshot(path: String, content: String, reason: String, language_id: String) -> void:
+	if not _snapshots_enabled() or store == null or path == "" or content == "":
+		return
+	var content_hash := str(content.hash())
+	if snapshot_hashes.get(path, "") == content_hash:
+		return
+	var saved_path: String = store.save_snapshot(path, content)
+	if saved_path == "":
+		return
+	snapshot_hashes[path] = content_hash
+	_record("code_snapshot", {"reason": reason, "snapshotPath": saved_path, "contentHash": content_hash, "bytes": content.to_utf8_buffer().size(), "lineCount": content.split("\n").size()}, path, language_id)
+
+func _snapshots_enabled() -> bool:
+	_ensure_snapshot_setting()
+	return bool(EditorInterface.get_editor_settings().get_setting("tracer/capture_code_snapshots"))
+
+func _ensure_snapshot_setting() -> void:
+	var settings := EditorInterface.get_editor_settings()
+	if not settings.has_setting("tracer/capture_code_snapshots"):
+		settings.set_setting("tracer/capture_code_snapshots", true)
+
+func _toggle_snapshots() -> void:
+	_ensure_snapshot_setting()
+	var settings := EditorInterface.get_editor_settings()
+	settings.set_setting("tracer/capture_code_snapshots", not _snapshots_enabled())
+	_update_dock()
 
 func _diff_payload(before: String, after: String, kind: String) -> Dictionary:
 	var old_lines := before.split("\n")
@@ -264,11 +313,11 @@ func _build_review(events: Array[Dictionary]) -> String:
 	else:
 		for file_path in files:
 			lines.append("- %s" % file_path)
-	lines.append_array(["", "## Activity signals", "", "- Script changes: %d" % int(counts.get("file_changed", 0)), "- Saves: %d" % int(counts.get("file_saved", 0)), "- Scene saves: %d" % int(counts.get("scene_saved", 0)), "- Playtest events: %d" % (int(counts.get("play_started", 0)) + int(counts.get("play_stopped", 0))), "", "## Recent path", ""])
+	lines.append_array(["", "## Activity signals", "", "- Script changes: %d" % int(counts.get("file_changed", 0)), "- Saves: %d" % int(counts.get("file_saved", 0)), "- Code snapshots: %d" % int(counts.get("code_snapshot", 0)), "- Scene saves: %d" % int(counts.get("scene_saved", 0)), "- Playtest events: %d" % (int(counts.get("play_started", 0)) + int(counts.get("play_stopped", 0))), "", "## Recent path", ""])
 	lines.append_array(path if not path.is_empty() else ["- No activity recorded"])
 	lines.append_array(["", "## Evidence", "", "This review is a deterministic summary of the local Godot event stream. The JSONL session remains the source of truth."])
 	return "\n".join(lines)
 
 func _update_dock() -> void:
 	if is_instance_valid(dock):
-		dock.update_state(recording, paused, store.sequence if store != null else 0, store.session_id if store != null else "", current_file)
+		dock.update_state(recording, paused, store.sequence if store != null else 0, store.session_id if store != null else "", current_file, _snapshots_enabled())

@@ -14,6 +14,7 @@ export function renderSessionSummary(events: TraceEvent[]): string {
   const files = [...new Set(ordered.flatMap((event) => event.file?.path ? [event.file.path] : []))];
   const changedFiles = [...new Set(ordered.filter((event) => event.type === "file_changed").flatMap((event) => event.file?.path ? [event.file.path] : []))];
   const diagnostics = ordered.filter((event) => event.type === "diagnostics_changed").length;
+  const snapshots = ordered.filter((event) => event.type === "code_snapshot").length;
   const tasks = ordered.filter((event) => event.type.startsWith("task_")).length;
   const terminals = ordered.filter((event) => event.type.startsWith("terminal_")).length;
   const git = ordered.filter((event) => event.type.startsWith("git_")).length;
@@ -26,7 +27,7 @@ export function renderSessionSummary(events: TraceEvent[]): string {
   lines.push("", "## Current objective", "", objective ?? "Not explicitly set");
   lines.push("", "## Files explored", "", ...(files.length ? files.map((file) => `- \`${file}\``) : ["- None recorded"]));
   lines.push("", "## Files changed", "", ...(changedFiles.length ? changedFiles.map((file) => `- \`${file}\``) : ["- None recorded"]));
-  lines.push("", "## Activity", "", `- ${ordered.filter((event) => event.type === "file_changed").length} file-change events`, `- ${ordered.filter((event) => event.type === "file_saved").length} file saves`, `- ${diagnostics} diagnostic updates`, `- ${tasks} task events`, `- ${terminals} terminal events`, `- ${git} Git events`);
+  lines.push("", "## Activity", "", `- ${ordered.filter((event) => event.type === "file_changed").length} file-change events`, `- ${ordered.filter((event) => event.type === "file_saved").length} file saves`, `- ${snapshots} code snapshots`, `- ${diagnostics} diagnostic updates`, `- ${tasks} task events`, `- ${terminals} terminal events`, `- ${git} Git events`);
   const path = compactEvents(ordered).slice(0, 20);
   lines.push("", "## Development path", "", ...(path.length
     ? path.map((event) => `- ${event.summary} _(raw: ${event.sourceSequences.join(", ")})_`)
@@ -45,6 +46,7 @@ export function renderAiContext(events: TraceEvent[]): string {
   const compactPath = compactEvents(ordered).slice(-20);
   const changes = ordered.filter((event) => event.type === "file_changed").length;
   const saves = ordered.filter((event) => event.type === "file_saved").length;
+  const snapshots = ordered.filter((event) => event.type === "code_snapshot").length;
   const diagnostics = ordered.filter((event) => event.type === "diagnostics_changed").length;
   const tasks = ordered.filter((event) => event.type.startsWith("task_")).length;
   const terminals = ordered.filter((event) => event.type.startsWith("terminal_")).length;
@@ -74,6 +76,7 @@ export function renderAiContext(events: TraceEvent[]): string {
     "",
     `- File changes: ${changes}`,
     `- Saves: ${saves}`,
+    `- Code snapshots: ${snapshots}`,
     `- Diagnostic updates: ${diagnostics}`,
     `- Tasks: ${tasks}`,
     `- Terminal events: ${terminals}`,

@@ -11,6 +11,7 @@ var start_button: Button
 var pause_button: Button
 var resume_button: Button
 var stop_button: Button
+var snapshot_button: Button
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(280, 0)
@@ -31,20 +32,24 @@ func _ready() -> void:
 	pause_button = _add_button(content, "Pause recording", "pause")
 	resume_button = _add_button(content, "Resume recording", "resume")
 	stop_button = _add_button(content, "Stop recording", "stop")
+	_add_heading(content, "CAPTURE")
+	snapshot_button = _add_button(content, "Code snapshots: On", "toggle_snapshots")
+	_add_meta(content, "Saved locally with this session for richer AI Review.")
 	_add_heading(content, "REVIEW")
 	_add_button(content, "Open AI Review", "review")
-	_add_button(content, "Open session folder", "open_storage")
+	_add_button(content, "Open Tracer storage", "open_storage")
 	_add_heading(content, "CAPTURED BY GODOT")
 	_add_meta(content, "Scenes, scripts, saves, resources, playtest and editor activity")
 	_update_buttons(false, false)
 
-func update_state(recording: bool, paused: bool, event_count: int, session_id: String, current_file: String) -> void:
+func update_state(recording: bool, paused: bool, event_count: int, session_id: String, current_file: String, snapshots_enabled: bool) -> void:
 	if not is_node_ready():
 		return
 	status_label.text = "Paused" if paused else "Recording" if recording else "Stopped"
 	events_label.text = "%d events" % event_count
 	session_label.text = "Session %s" % session_id.substr(0, 8) if session_id != "" else "No session started"
 	current_file_label.text = "Current file: %s" % current_file if current_file != "" else "Current file: none"
+	snapshot_button.text = "Code snapshots: %s" % ("On" if snapshots_enabled else "Off")
 	_update_buttons(recording, paused)
 
 func _update_buttons(recording: bool, paused: bool) -> void:
