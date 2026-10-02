@@ -101,6 +101,8 @@ git push origin v0.2.1
 
 The [release workflow](.github/workflows/release.yml) validates the tag against both collector versions, runs TypeScript and extension tests, builds the VSIX and Godot ZIP, and publishes a GitHub release with both assets. The GitHub Actions log shows whether publication succeeded.
 
+If a tag push does not start a run, open **Actions > Release > Run workflow**, keep the workflow branch on `main`, and enter the existing version tag. The manual run builds that tagged commit and uses the same validation and publication steps.
+
 ## Godot 4 integration
 
 Tracer can run inside the Godot editor as an importable editor plugin. Build the package with:
