@@ -1,0 +1,11 @@
+; Validation project; the distributable ZIP includes only addons/.
+config_version=5
+
+[application]
+config/name="Tracer Validation"
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/tracer/plugin.cfg")
+
+[rendering]
+renderer/rendering_method="gl_compatibility"

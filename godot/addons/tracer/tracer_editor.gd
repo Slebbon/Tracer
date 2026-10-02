@@ -3,6 +3,7 @@ extends EditorPlugin
 
 const EventStore = preload("tracer_event_store.gd")
 const TracerDock = preload("tracer_dock.gd")
+const TracerReview = preload("tracer_review.gd")
 
 var dock: VBoxContainer
 var store
@@ -13,6 +14,7 @@ var current_script_path := ""
 var current_file := ""
 var current_scene_path := ""
 var playing := false
+var current_objective := "Unknown — not explicitly set"
 var snapshots: Dictionary = {}
 var snapshot_hashes: Dictionary = {}
 var snapshot_elapsed := 0.0
@@ -55,10 +57,14 @@ func _on_dock_action(action: String) -> void:
 		"stop": _stop_session()
 		"toggle_snapshots": _toggle_snapshots()
 		"review": _show_review()
+		"objective", "outcome", "next_step": _show_note_dialog(action)
 		"open_storage": OS.shell_open(ProjectSettings.globalize_path("user://tracer"))
 
 func _start_session() -> void:
 	if recording:
+		return
+	if paused:
+		_resume_session()
 		return
 	store = EventStore.new()
 	var project_name := str(ProjectSettings.get_setting("application/config/name", "Godot Project"))
@@ -66,6 +72,9 @@ func _start_session() -> void:
 		return
 	recording = true
 	paused = false
+	current_objective = "Unknown — not explicitly set"
+	# A running scene at session start is not a new playtest.
+	playing = EditorInterface.is_playing_scene()
 	current_file = ""
 	current_script_path = ""
 	current_scene_path = ""
@@ -91,6 +100,7 @@ func _resume_session() -> void:
 	store.resume_session()
 	recording = true
 	paused = false
+	playing = EditorInterface.is_playing_scene()
 	_update_dock()
 
 func _stop_session() -> void:
@@ -179,7 +189,7 @@ func _capture_current_script_snapshot(reason: String) -> void:
 	_capture_code_snapshot(script.resource_path, script.source_code, reason, "gd")
 
 func _capture_code_snapshot(path: String, content: String, reason: String, language_id: String) -> void:
-	if not _snapshots_enabled() or store == null or path == "" or content == "":
+	if not recording or not _snapshots_enabled() or store == null or path == "":
 		return
 	var content_hash := str(content.hash())
 	if snapshot_hashes.get(path, "") == content_hash:
@@ -275,49 +285,37 @@ func _show_review() -> void:
 	add_child(window)
 	window.popup_centered()
 
+func _show_note_dialog(action: String) -> void:
+	if store == null or (not recording and not paused):
+		return
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Set objective" if action == "objective" else "Record outcome" if action == "outcome" else "Record unresolved / next step"
+	dialog.size = Vector2i(600, 280)
+	var input := TextEdit.new()
+	input.custom_minimum_size = Vector2(560, 170)
+	input.placeholder_text = "Describe your objective" if action == "objective" else "Describe what you implemented or verified" if action == "outcome" else "Describe an unresolved item or next step"
+	if action == "objective" and not current_objective.begins_with("Unknown"):
+		input.text = current_objective
+	dialog.add_child(input)
+	var note_store = store
+	dialog.confirmed.connect(func() -> void:
+		var text := input.text.strip_edges()
+		if text != "" and store == note_store and (recording or paused):
+			if action == "objective":
+				current_objective = text
+				_record("objective_set", {"objective": text})
+			else:
+				_record("outcome_noted" if action == "outcome" else "next_step_noted", {"note": text})
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()
+	input.grab_focus()
+
 func _build_review(events: Array[Dictionary]) -> String:
-	var files: Array[String] = []
-	var counts: Dictionary = {}
-	var objective := "Not explicitly set"
-	var path: Array[String] = []
-	for event in events:
-		var event_type := str(event.get("type", "unknown"))
-		counts[event_type] = int(counts.get(event_type, 0)) + 1
-		var file_data = event.get("file", {})
-		if file_data is Dictionary and str(file_data.get("path", "")) != "":
-			var file_path := str(file_data.get("path", ""))
-			if not files.has(file_path):
-				files.append(file_path)
-		var payload = event.get("payload", {})
-		if event_type == "objective_set" and payload is Dictionary:
-			objective = str(payload.get("objective", objective))
-		if path.size() < 20:
-			path.append("- %s%s" % [event_type.replace("_", " "), " — " + str(file_data.get("path", "")) if file_data is Dictionary and str(file_data.get("path", "")) != "" else ""])
-	var lines: Array[String] = [
-		"# Tracer AI Review",
-		"",
-		"## Objective",
-		"",
-		objective,
-		"",
-		"## Session overview",
-		"",
-		"- Raw events: %d" % events.size(),
-		"- Session file: %s" % ProjectSettings.globalize_path(store.session_path),
-		"",
-		"## Files involved",
-		""
-	]
-	if files.is_empty():
-		lines.append("- None recorded")
-	else:
-		for file_path in files:
-			lines.append("- %s" % file_path)
-	lines.append_array(["", "## Activity signals", "", "- Script changes: %d" % int(counts.get("file_changed", 0)), "- Saves: %d" % int(counts.get("file_saved", 0)), "- Code snapshots: %d" % int(counts.get("code_snapshot", 0)), "- Scene saves: %d" % int(counts.get("scene_saved", 0)), "- Playtest events: %d" % (int(counts.get("play_started", 0)) + int(counts.get("play_stopped", 0))), "", "## Recent path", ""])
-	lines.append_array(path if not path.is_empty() else ["- No activity recorded"])
-	lines.append_array(["", "## Evidence", "", "This review is a deterministic summary of the local Godot event stream. The JSONL session remains the source of truth."])
-	return "\n".join(lines)
+	return TracerReview.build(events, ProjectSettings.globalize_path(store.session_path))
 
 func _update_dock() -> void:
 	if is_instance_valid(dock):
-		dock.update_state(recording, paused, store.sequence if store != null else 0, store.session_id if store != null else "", current_file, _snapshots_enabled())
+		dock.update_state(recording, paused, store.sequence if store != null else 0, store.session_id if store != null else "", current_file, _snapshots_enabled(), current_objective)

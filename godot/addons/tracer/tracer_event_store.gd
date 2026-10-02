@@ -31,14 +31,15 @@ func append(event_type: String, payload: Dictionary = {}, file_path := "", langu
 	if not active:
 		return ""
 	var lifecycle := event_type in ["session_started", "session_ended", "session_paused", "session_resumed"]
-	if not recording and not lifecycle:
+	var annotation := event_type in ["objective_set", "outcome_noted", "next_step_noted"]
+	if not recording and not lifecycle and not annotation:
 		return ""
 	sequence += 1
 	var event := {
 		"schemaVersion": SCHEMA_VERSION,
 		"sessionId": session_id,
 		"sequence": sequence,
-		"timestamp": Time.get_datetime_string_from_system(true, true),
+		"timestamp": Time.get_datetime_string_from_system(true, true) + "Z",
 		"source": SOURCE,
 		"type": event_type,
 		"payload": payload
@@ -59,7 +60,7 @@ func append(event_type: String, payload: Dictionary = {}, file_path := "", langu
 	return JSON.stringify(event)
 
 func save_snapshot(file_path: String, content: String) -> String:
-	if snapshot_directory == "":
+	if not active or not recording or snapshot_directory == "":
 		return ""
 	var safe_name := file_path.replace("res://", "").replace("/", "_").replace("\\", "_").replace(":", "_")
 	if safe_name == "":
@@ -98,7 +99,10 @@ func read_events() -> Array[Dictionary]:
 	if file == null:
 		return result
 	while not file.eof_reached():
-		var parsed = JSON.parse_string(file.get_line())
+		var line := file.get_line()
+		if line.strip_edges() == "":
+			continue
+		var parsed = JSON.parse_string(line)
 		if parsed is Dictionary:
 			result.append(parsed)
 	file.close()

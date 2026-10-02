@@ -3,7 +3,7 @@
   "displayName": "Tracer",
   "publisher": "tracer-local",
   "description": "Local-first developer activity recorder",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "author": {
     "name": "Marco Confessore"
   },
@@ -22,6 +22,14 @@
   ],
   "contributes": {
     "commands": [
+      {
+        "command": "tracer.noteOutcome",
+        "title": "Tracer: Record Outcome"
+      },
+      {
+        "command": "tracer.noteNextStep",
+        "title": "Tracer: Record Unresolved / Next Step"
+      },
       {
         "command": "tracer.start",
         "title": "Tracer: Start Recording"
@@ -156,8 +164,10 @@
     "vscode:prepublish": "npm run compile",
     "check": "tsc -p ./tsconfig.json --noEmit",
     "test:core": "node --test --experimental-strip-types core.test.ts",
+    "test:extension": "npm run compile && node --test extension.test.cjs",
     "package:extension": "vsce package --no-dependencies",
-    "package:godot": "tar.exe -a -c -f tracer-godot-0.1.0.zip -C godot addons"
+    "package:godot": "node scripts/package-godot.cjs",
+    "release:check": "node scripts/check-release.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -54,7 +54,10 @@ function isStoredEvent(value: unknown): value is TraceEvent {
       "workspace_opened", "workspace_changed", "file_opened", "active_file_changed",
       "file_changed", "file_saved", "code_snapshot", "diagnostics_changed", "terminal_opened",
       "terminal_closed", "terminal_command_started", "terminal_command_finished",
-      "task_started", "task_finished", "task_process_finished", "git_branch_changed", "git_commit"
+      "task_started", "task_finished", "task_process_finished", "git_branch_changed", "git_commit",
+      "outcome_noted", "next_step_noted", "play_started", "play_stopped", "script_opened",
+      "scene_opened", "scene_closed", "scene_saved", "resource_saved", "editor_screen_changed",
+      "filesystem_changed", "node_selected"
     ].includes(event.type)
     && typeof event.payload === "object" && event.payload !== null;
 }

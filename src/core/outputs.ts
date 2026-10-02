@@ -1,5 +1,6 @@
 import type { TraceEvent } from "./events";
 import { compactEvents, renderCompactTimeline } from "./timeline";
+import { renderReviewEvidence } from "./review-evidence";
 
 export function renderRawJsonl(events: TraceEvent[]): string {
   return `${events
@@ -32,6 +33,7 @@ export function renderSessionSummary(events: TraceEvent[]): string {
   lines.push("", "## Development path", "", ...(path.length
     ? path.map((event) => `- ${event.summary} _(raw: ${event.sourceSequences.join(", ")})_`)
     : ["- No activity path recorded"]));
+  lines.push(...renderReviewEvidence(ordered));
   return `${lines.join("\n")}\n`;
 }
 
@@ -87,6 +89,7 @@ export function renderAiContext(events: TraceEvent[]): string {
     ...(compactPath.length
       ? compactPath.map((event) => `- ${event.summary} _(raw events: ${event.sourceSequences.join(", ")})_`)
       : ["- No activity path recorded"]),
+    ...renderReviewEvidence(ordered),
     "",
     "## Evidence and limits",
     "",

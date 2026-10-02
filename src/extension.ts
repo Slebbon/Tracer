@@ -48,7 +48,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     details: Parameters<typeof createEvent>[4] = {}
   ): Promise<void> => {
     const lifecycle = type === "session_started" || type === "session_ended" || type === "session_paused" || type === "session_resumed";
-    if (!hasSession || !store || (!recording && !lifecycle)) return;
+    const annotation = type === "objective_set" || type === "outcome_noted" || type === "next_step_noted";
+    if (!hasSession || !store || (!recording && !lifecycle && !(annotation && !ended))) return;
     await store.append(createEvent(sessionId, ++sequence, type, payload, details));
     eventCount += 1;
     updateStatus();
@@ -100,6 +101,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("tracer.start", async () => {
       if (recording) return;
+      if (!ended) {
+        await vscode.commands.executeCommand("tracer.resume");
+        return;
+      }
       await startSession();
       void vscode.window.showInformationMessage("Tracer recording started.");
     }),
@@ -108,20 +113,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage(`${hasSession ? `Tracer session ${sessionId.slice(0, 8)}` : "Tracer has no active session"}: ${events.length} events (${ended ? "stopped" : recording ? "recording" : "paused"}).`);
     }),
     vscode.commands.registerCommand("tracer.setObjective", async () => {
-      if (!hasSession) {
+      if (!hasSession || ended) {
         void vscode.window.showInformationMessage("Start a Tracer session before setting an objective.");
         return;
       }
+      const objectiveSessionId = sessionId;
       const objective = await vscode.window.showInputBox({
         prompt: "What are you trying to accomplish in this session?",
         placeHolder: "e.g. Fix token refresh handling and make the tests pass",
         ignoreFocusOut: true
       });
-      if (!objective?.trim()) return;
+      if (!objective?.trim() || ended || sessionId !== objectiveSessionId) return;
       currentObjective = objective.trim();
       await append("objective_set", { objective: objective.trim() });
       void vscode.window.showInformationMessage("Tracer current objective updated.");
     }),
+    ...(["outcome_noted", "next_step_noted"] as const).map((type) =>
+      vscode.commands.registerCommand(type === "outcome_noted" ? "tracer.noteOutcome" : "tracer.noteNextStep", async () => {
+        if (!hasSession || ended) {
+          void vscode.window.showInformationMessage("Start a Tracer session before adding a note.");
+          return;
+        }
+        const noteSessionId = sessionId;
+        const note = await vscode.window.showInputBox({
+          prompt: type === "outcome_noted" ? "What did you implement or verify?" : "What remains unresolved or should happen next?",
+          ignoreFocusOut: true
+        });
+        if (note?.trim() && !ended && sessionId === noteSessionId) await append(type, { note: note.trim() });
+      })
+    ),
     vscode.commands.registerCommand("tracer.pause", async () => {
       if (ended || !recording) return;
       recording = false;
@@ -333,7 +353,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   async function captureCodeSnapshot(document: vscode.TextDocument, reason: "session_started" | "save" | "interval"): Promise<void> {
-    if (!hasSession || !store || !captureCodeSnapshotsEnabled() || document.uri.scheme !== "file") return;
+    if (!hasSession || !recording || ended || !store || !captureCodeSnapshotsEnabled() || document.uri.scheme !== "file") return;
     const relativePath = vscode.workspace.asRelativePath(document.uri);
     if (isIgnoredPath(relativePath, ignored())) return;
     const content = document.getText();
@@ -414,6 +434,7 @@ class TracerSidebarProvider implements vscode.WebviewViewProvider {
     </style></head><body>
       <section class="section"><h2>Session</h2><div class="state ${state.state}"><span class="dot"></span><span>${state.state}</span></div><div class="meta">${state.eventCount} events<br>${state.sessionId ? `Session ${escape(state.sessionId.slice(0, 8))}` : "No session started"}</div></section>
       <section class="section"><h2>Current objective</h2><div class="objective">${escape(state.objective)}</div>${button("tracer.setObjective", "Set objective", true)}</section>
+      <section class="section"><h2>Session notes</h2>${button("tracer.noteOutcome", "Record outcome")}${button("tracer.noteNextStep", "Record unresolved / next step")}</section>
       <section class="section"><h2>Recording</h2>${state.state === "recording" ? button("tracer.pause", "Pause recording", true) : state.state === "paused" ? button("tracer.resume", "Resume recording", true) : button("tracer.start", "Start recording", true)}${state.state !== "stopped" ? button("tracer.stop", "Stop recording") : ""}${button("tracer.showStatus", "Show status")}</section>
       <section class="section"><h2>Capture</h2><div class="meta">Local code snapshots enrich the AI Review and are stored with the session.</div>${button("tracer.toggleCodeSnapshots", `Code snapshots: ${state.captureCodeSnapshots ? "On" : "Off"}`, state.captureCodeSnapshots)}</section>
       <section class="section"><h2>Inspect</h2>${button("tracer.showTimeline", "Open timeline", true)}${button("tracer.showRecentSessions", "Recent sessions")}</section>

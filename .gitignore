@@ -6,6 +6,9 @@ out/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+.godot-validation/
+godot/.godot/
+*.gd.uid
 
 # Local planning and validation notes; keep the repository focused on product code.
 MVP-implementation/

@@ -13,3 +13,8 @@ MVP-VALIDATION-CHECKLIST.md
 MVP-STATUS.md
 npm-debug.log*
 godot/**
+.godot-validation/**
+extension.test.cjs
+MVP-implementation/**
+*.zip
+scripts/**
